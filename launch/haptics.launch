@@ -1,0 +1,6 @@
+<launch>
+	
+	<node name="davinci_joystick" pkg="davinci_joystick" type="davinci_joystick"/> 
+	<node name="davinci_haptics" pkg="davinci_haptics" type="davinci_haptics"/>
+
+</launch>

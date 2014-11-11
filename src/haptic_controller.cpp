@@ -3,20 +3,20 @@
 #include <std_msgs/Float64.h>
 #include <vector>
 
-#define ROLL_LIMIT 2.5
+#define ROLL_LIMIT 1.5
 #define PITCH_LIMIT 1.2
 #define JAW_LIMIT 1.5
+
+#define FREQ 500
 
 using namespace std;
 
 class Davinci
 {
 public:
-	double I_roll;
-	double I_jaw_left;
-	double I_jaw_right;
-	double I_pitch;
-
+	vector<double> current;
+	vector<double> position;
+	bool init;
 
 	void StateCallback(sensor_msgs::JointState arm);
 	Davinci();
@@ -27,20 +27,30 @@ private:
 
 Davinci::Davinci()
 {
-	I_roll = 0.0;
-	I_jaw_left = 0.0;
-	I_jaw_right = 0.0;
-	I_pitch = 0.0;
+	init = false;
 }
 Davinci::~Davinci()
 {
 }
 void Davinci::StateCallback(sensor_msgs::JointState arm)
 {
-	I_jaw_left = arm.effort[2];
-	I_jaw_right = arm.effort[3];
-	I_pitch = arm.effort[4];
-	I_roll = arm.effort[5];
+	int l = arm.name.size();
+	current.resize(l);
+	position.resize(l);
+
+	for(int i=0; i<l;i++)
+	{
+		current[i] = arm.effort[i];
+		position[i] = arm.position[i];
+	}
+	if (l > 0)
+	{
+		init = true;
+	}
+	else
+	{
+		init = false;
+	}
 	// p4_hand_pitch, p4_hand_roll, p4_intr_jaw_left, p4 instr_jaw_right, p4_instr_pitch, p4_instr_roll, p4_instr_slide
 
 }
@@ -55,10 +65,12 @@ public:
 	void check_limits(void);
 
 	double roll,pitch,jaw_left,jaw_right;
-
-private:
 	vector<double> position;
 	vector<double> current;
+
+	bool init;
+private:
+	
 };
 Joystick::Joystick()
 {
@@ -66,6 +78,8 @@ Joystick::Joystick()
 	pitch = 0;
 	jaw_left = 0;
 	jaw_right = 0;
+
+	init = false;
 }
 Joystick::~Joystick()
 {
@@ -73,14 +87,25 @@ Joystick::~Joystick()
 }
 void Joystick::JoystickCallback(sensor_msgs::JointState joint_states)
 {
-	position.clear();
-	current.clear();
 
-	for(int i=0; i<joint_states.name.size();i++)
+	int l = joint_states.name.size();
+	position.resize(l);
+	current.resize(l);
+
+	for(int i=0; i<l;i++)
 	{
-		position.push_back(joint_states.position[i]);
-		current.push_back(joint_states.effort[i]);
+		position[i] = joint_states.position[i];
+		current[i] = joint_states.effort[i];
 	}
+	if (l == 4)
+	{
+		init = true;
+	}
+	else
+	{
+		init = false;
+	}
+
 
 }
 void Joystick::check_limits(void)
@@ -95,7 +120,7 @@ void Joystick::check_limits(void)
 	}
 	else
 	{
-		roll = -position[2];
+		roll = position[2];
 	}
 
 	if (position[3] > PITCH_LIMIT)
@@ -155,7 +180,7 @@ int main(int argc, char **argv)
 	ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
 	ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
 
-	ros::Rate rate(100);
+	ros::Rate rate(FREQ);
 
 	std_msgs::Float64 roll_setpoint;
 	std_msgs::Float64 pitch_setpoint;
@@ -164,8 +189,10 @@ int main(int argc, char **argv)
 
 	while (ros::ok())
 	{
-
-		joystick.check_limits();
+		if (joystick.init)
+		{
+			joystick.check_limits();
+		}
 
 		roll_setpoint.data = joystick.roll;
 		pitch_setpoint.data = joystick.pitch;
