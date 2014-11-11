@@ -58,6 +58,7 @@ public:
 
 private:
 	vector<double> position;
+	vector<double> current;
 };
 Joystick::Joystick()
 {
@@ -72,9 +73,13 @@ Joystick::~Joystick()
 }
 void Joystick::JoystickCallback(sensor_msgs::JointState joint_states)
 {
+	position.clear();
+	current.clear();
+
 	for(int i=0; i<joint_states.name.size();i++)
 	{
 		position.push_back(joint_states.position[i]);
+		current.push_back(joint_states.effort[i]);
 	}
 
 }
@@ -159,8 +164,6 @@ int main(int argc, char **argv)
 
 	while (ros::ok())
 	{
-
-
 
 		joystick.check_limits();
 
