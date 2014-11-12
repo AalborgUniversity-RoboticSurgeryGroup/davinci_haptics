@@ -1,57 +1,77 @@
 #include <ros/ros.h>
 #include <sensor_msgs/JointState.h>
+#include "std_msgs/Float64MultiArray.h"
 #include <std_msgs/Float64.h>
 #include <vector>
 
-#define ROLL_LIMIT 1.5
+#define ROLL_LIMIT 2.5
 #define PITCH_LIMIT 1.2
 #define JAW_LIMIT 1.5
+
+#define Kt_p4 0.0439
 
 #define FREQ 500
 
 using namespace std;
 
-class Davinci
+class System
 {
 public:
 	vector<double> current;
 	vector<double> position;
-	bool init;
+	vector<double> velocity;
 
-	void StateCallback(sensor_msgs::JointState arm);
-	Davinci();
-	~Davinci();
+	vector<double> setpoint;
+
+	bool ready;
+	vector<double> Kt;
+	vector<double> Gr;
+
+	void SystemCallback(sensor_msgs::JointState system);
+	void check_limits_position(vector<double> limit);
+
+	System(vector<double> torque_constant, vector<double> gear_ratio);
+	~System();
 private:
 
 };
+System::System(vector<double> torque_constant, vector<double> gear_ratio)
+{
+	ready = false;
+	Kt = torque_constant;
+	Kt.resize(torque_constant.size());
+	Gr = gear_ratio;
+	Gr.resize(gear_ratio.size());
 
-Davinci::Davinci()
-{
-	init = false;
 }
-Davinci::~Davinci()
+System::~System()
 {
-}
-void Davinci::StateCallback(sensor_msgs::JointState arm)
-{
-	int l = arm.name.size();
-	current.resize(l);
-	position.resize(l);
 
-	for(int i=0; i<l;i++)
+}
+void System::SystemCallback(sensor_msgs::JointState system)
+{
+	int length = system.name.size();
+	current.resize(length);
+	position.resize(length);
+	velocity.resize(length);
+
+	if (length > 0)
 	{
-		current[i] = arm.effort[i];
-		position[i] = arm.position[i];
-	}
-	if (l > 0)
-	{
-		init = true;
+		for(int i=0; i<length;i++)
+		{
+			current[i] = system.effort[i];
+			position[i] = system.position[i];
+			velocity[i] = system.velocity[i];
+		}
+		ready = true;
 	}
 	else
 	{
-		init = false;
+		ready = false;
 	}
-	// p4_hand_pitch, p4_hand_roll, p4_intr_jaw_left, p4 instr_jaw_right, p4_instr_pitch, p4_instr_roll, p4_instr_slide
+}
+void System::check_limits_position(vector<double> limit)
+{
 
 }
 
@@ -67,8 +87,10 @@ public:
 	double roll,pitch,jaw_left,jaw_right;
 	vector<double> position;
 	vector<double> current;
+	vector<double> Kt;
+	vector<double> Gr;
 
-	bool init;
+	bool ready;
 private:
 	
 };
@@ -79,7 +101,19 @@ Joystick::Joystick()
 	jaw_left = 0;
 	jaw_right = 0;
 
-	init = false;
+	ready = false;
+
+	Kt.push_back(0.00841);
+	Kt.push_back(0.0109);
+	Kt.push_back(0.0109);
+	Kt.push_back(0.0109);
+	Kt.resize(4);
+
+	Gr.push_back(5.1*2);
+	Gr.push_back(19.0);
+	Gr.push_back(4.4);
+	Gr.push_back(19.0);
+	Gr.resize(4);
 }
 Joystick::~Joystick()
 {
@@ -99,11 +133,11 @@ void Joystick::JoystickCallback(sensor_msgs::JointState joint_states)
 	}
 	if (l == 4)
 	{
-		init = true;
+		ready = true;
 	}
 	else
 	{
-		init = false;
+		ready = false;
 	}
 
 
@@ -165,20 +199,67 @@ void Joystick::check_limits(void)
 }
 
 
+
+class Haptic_controller
+{
+public:
+
+	Haptic_controller();
+	~Haptic_controller();
+
+	void calculate_torque(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio);
+	void calculate_current_sp(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio);
+
+	vector<double> T;
+	vector<double> I_sp;
+
+private:
+
+};
+Haptic_controller::Haptic_controller()
+{
+
+}
+Haptic_controller::~Haptic_controller()
+{
+
+}
+void Haptic_controller::calculate_torque(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio)
+{
+
+	for (int i=0;i<current.size();i++)
+	{
+		T[i] = current[i]*torque_constant[i]*gear_ratio[i];
+	}
+	T.resize(current.size());
+}
+void Haptic_controller::calculate_current_sp(vector<double> torque, vector<double> torque_constant, vector<double> gear_ratio)
+{
+	for (int i=0;i<torque.size();i++)
+	{
+		I_sp[i] = T[i]/torque_constant[i]/gear_ratio[i];
+	}
+	I_sp.resize(torque.size());
+}
+
 int main(int argc, char **argv)
 {
-	Davinci P4;
+	vector<double> kT (7,Kt_p4);
+	vector<double> gR (7,1);
+	System P4 (kT,gR);
+
 	Joystick joystick;
 
 	ros::init(argc, argv, "haptic_controller");
 	ros::NodeHandle n;
 	ros::Subscriber Joystick_sub = n.subscribe("davinci_joystick/joint_states",1,&Joystick::JoystickCallback, &joystick);
-	ros::Subscriber P4_sub = n.subscribe("/davinci/joint_states", 1, &Davinci::StateCallback, &P4);
+	ros::Subscriber P4_sub = n.subscribe("/davinci/joint_states", 1, &System::SystemCallback, &P4);
 
 	ros::Publisher instr_roll_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_roll_controller/command",1);
 	ros::Publisher instr_pitch_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_pitch_controller/command",1);
 	ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
 	ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
+	ros::Publisher joystick_sp_pub = n.advertise<std_msgs::Float64MultiArray>("davinci_joystick/I_sp",1);
 
 	ros::Rate rate(FREQ);
 
@@ -187,22 +268,47 @@ int main(int argc, char **argv)
 	std_msgs::Float64 jaw_left_setpoint;
 	std_msgs::Float64 jaw_right_setpoint;
 
+	std_msgs::Float64MultiArray joystick_sp;
+	joystick_sp.data.resize(4);
+
+
+	Haptic_controller C;
+
 	while (ros::ok())
 	{
-		if (joystick.init)
+		if (joystick.ready)
 		{
 			joystick.check_limits();
 		}
 
-		roll_setpoint.data = joystick.roll;
-		pitch_setpoint.data = joystick.pitch;
-		jaw_left_setpoint.data = joystick.jaw_left;
-		jaw_right_setpoint.data = joystick.jaw_right;
+
+		C.calculate_torque(P4.current,P4.Kt,P4.Gr);
+
+		vector<double>Torque_robot = C.T;
+
+		C.calculate_current_sp(Torque_robot,joystick.Kt,joystick.Gr);
+
+		if(joystick.ready)
+		{
+			roll_setpoint.data = joystick.roll;
+			pitch_setpoint.data = joystick.pitch;
+			jaw_left_setpoint.data = joystick.jaw_left;
+			jaw_right_setpoint.data = joystick.jaw_right;
+		}
+
+		if(P4.ready)
+		{
+			joystick_sp.data[0] = 0;
+			joystick_sp.data[1] = 0;
+			joystick_sp.data[2] = C.I_sp[5];
+			joystick_sp.data[3] = C.I_sp[4];
+		}
 
 		instr_yawl_pub.publish(jaw_left_setpoint);
 		instr_yawr_pub.publish(jaw_right_setpoint);
 		instr_roll_pub.publish(roll_setpoint);
 		instr_pitch_pub.publish(pitch_setpoint);
+		joystick_sp_pub.publish(joystick_sp);
 
 		ros::spinOnce();
 		rate.sleep();
