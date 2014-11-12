@@ -10,7 +10,7 @@
 
 #define Kt_p4 0.0439
 
-#define FREQ 500
+#define FREQ 200
 
 using namespace std;
 
@@ -105,14 +105,14 @@ Joystick::Joystick()
 
 	Kt.push_back(0.00841);
 	Kt.push_back(0.0109);
-	Kt.push_back(0.0109);
-	Kt.push_back(0.0109);
+	Kt.push_back(0.0109);	//roll
+	Kt.push_back(0.0109);	//pitch
 	Kt.resize(4);
 
-	Gr.push_back(5.1*2);
-	Gr.push_back(19.0);
-	Gr.push_back(4.4);
-	Gr.push_back(19.0);
+	Gr.push_back(1);
+	Gr.push_back(1);
+	Gr.push_back(4.4);	//roll
+	Gr.push_back(19.1);
 	Gr.resize(4);
 }
 Joystick::~Joystick()
@@ -209,6 +209,7 @@ public:
 
 	void calculate_torque(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio);
 	void calculate_current_sp(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio);
+	void print(vector<double> vec);
 
 	vector<double> T;
 	vector<double> I_sp;
@@ -226,20 +227,31 @@ Haptic_controller::~Haptic_controller()
 }
 void Haptic_controller::calculate_torque(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio)
 {
-
+	T.resize(current.size());
 	for (int i=0;i<current.size();i++)
 	{
 		T[i] = current[i]*torque_constant[i]*gear_ratio[i];
 	}
-	T.resize(current.size());
+
 }
 void Haptic_controller::calculate_current_sp(vector<double> torque, vector<double> torque_constant, vector<double> gear_ratio)
 {
-	for (int i=0;i<torque.size();i++)
+	I_sp.resize(4);
+
+	I_sp[0] = 0;
+ 	I_sp[1] = 0;
+	I_sp[3] = 0;
+	I_sp[2] = torque[5]/torque_constant[2]/gear_ratio[2];
+
+	
+}
+void Haptic_controller::print(vector<double> vec)
+{
+	for(int i=0;i<vec.size();i++)
 	{
-		I_sp[i] = T[i]/torque_constant[i]/gear_ratio[i];
+		printf("%lf \t",vec.at(i));
 	}
-	I_sp.resize(torque.size());
+	printf("\n");
 }
 
 int main(int argc, char **argv)
@@ -280,13 +292,14 @@ int main(int argc, char **argv)
 		{
 			joystick.check_limits();
 		}
+		
 
-
-		C.calculate_torque(P4.current,P4.Kt,P4.Gr);
-
-		vector<double>Torque_robot = C.T;
-
-		C.calculate_current_sp(Torque_robot,joystick.Kt,joystick.Gr);
+		if (P4.ready)
+		{
+			C.calculate_torque(P4.current,P4.Kt,P4.Gr);
+			vector<double>Torque_robot =C.T;
+			C.calculate_current_sp(C.T,joystick.Kt,joystick.Gr);
+		}
 
 		if(joystick.ready)
 		{
@@ -300,8 +313,8 @@ int main(int argc, char **argv)
 		{
 			joystick_sp.data[0] = 0;
 			joystick_sp.data[1] = 0;
-			joystick_sp.data[2] = C.I_sp[5];
-			joystick_sp.data[3] = C.I_sp[4];
+			joystick_sp.data[2] = C.I_sp[2];
+			joystick_sp.data[3] = C.I_sp[3];
 		}
 
 		instr_yawl_pub.publish(jaw_left_setpoint);
