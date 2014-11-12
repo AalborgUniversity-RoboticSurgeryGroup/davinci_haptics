@@ -109,10 +109,10 @@ Joystick::Joystick()
 	Kt.push_back(0.0109);	//pitch
 	Kt.resize(4);
 
-	Gr.push_back(1);
-	Gr.push_back(1);
+	Gr.push_back(5.1*2);
+	Gr.push_back(19);
 	Gr.push_back(4.4);	//roll
-	Gr.push_back(19.1);
+	Gr.push_back(19);
 	Gr.resize(4);
 }
 Joystick::~Joystick()
@@ -238,10 +238,10 @@ void Haptic_controller::calculate_current_sp(vector<double> torque, vector<doubl
 {
 	I_sp.resize(4);
 
-	I_sp[0] = 0;
- 	I_sp[1] = 0;
-	I_sp[3] = 0;
-	I_sp[2] = torque[5]/torque_constant[2]/gear_ratio[2];
+	I_sp[0] = 0;//(torque[2]+torque[3])/torque_constant[0]/gear_ratio[0];	// pinch 	(Motor1)
+ 	I_sp[1] = 0;//(torque[2]-torque[3])/torque_constant[1]/gear_ratio[1];	// yaw		(Motor2)
+	I_sp[2] = torque[5]/torque_constant[2]/gear_ratio[2];	// Roll		(Motor3)
+	I_sp[3] = 0;//torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
 
 	
 }
@@ -257,7 +257,15 @@ void Haptic_controller::print(vector<double> vec)
 int main(int argc, char **argv)
 {
 	vector<double> kT (7,Kt_p4);
-	vector<double> gR (7,1);
+	vector<double> gR (7);
+	gR.at(0)=0;
+	gR.at(1)=0;
+	gR.at(2)=10.0;
+	gR.at(3)=10.0;
+	gR.at(4)=11.0;
+	gR.at(5)=7.5;
+	gR.at(6)=0;
+
 	System P4 (kT,gR);
 
 	Joystick joystick;
