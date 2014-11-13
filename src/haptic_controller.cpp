@@ -3,6 +3,7 @@
 #include "std_msgs/Float64MultiArray.h"
 #include <std_msgs/Float64.h>
 #include <vector>
+#include <math.h>
 
 #define ROLL_LIMIT 2.5
 #define PITCH_LIMIT 1.2
@@ -237,15 +238,26 @@ void Haptic_controller::calculate_torque(vector<double> current, vector<double> 
 void Haptic_controller::calculate_current_sp(vector<double> position, vector<double> torque, vector<double> torque_constant, vector<double> gear_ratio)
 {
 
-	double Theta = (position[3]-position[2])/2;
+	double Theta = (position[2]+position[3])/2;
+	double sign0;
+
 	I_sp.resize(4);
 
-	I_sp[0] = (torque[2]*cos(Theta)+torque[3]*cos(Theta))/torque_constant[0]/gear_ratio[0];	// pinch 	(Motor1)
- 	I_sp[1] = 0;//(torque[2]*cos(Theta)-torque[3]*cos(Theta))/torque_constant[1]/gear_ratio[1];	// yaw		(Motor2)
-	I_sp[2] = -torque[5]/torque_constant[2]/gear_ratio[2];	// Roll		(Motor3)
-	I_sp[3] = 2*torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
+	if(torque[3] >= torque[2])
+	{
+		sign0 = 1;
+	}
+	else
+	{
+		sign0 = -1;
+	}
 
-	
+	I_sp[0] = sign0*(fabs(torque[2])+fabs(torque[3]))/torque_constant[0]/gear_ratio[0];	// pinch 	(Motor1)
+ 	I_sp[1] = sign0*(fabs(torque[2])-fabs(torque[3]))/torque_constant[0]/gear_ratio[0];//(torque[2]*cos(Theta)-torque[3]*cos(Theta))/torque_constant[1]/gear_ratio[1];	// yaw		(Motor2)
+	I_sp[2] = -torque[5]/torque_constant[2]/gear_ratio[2];	// Roll		(Motor3)
+	I_sp[3] = torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
+
+	printf("%lf \t %lf \t %lf \n",Theta,cos(Theta),torque[2]+torque[3]);
 }
 void Haptic_controller::print(vector<double> vec)
 {
