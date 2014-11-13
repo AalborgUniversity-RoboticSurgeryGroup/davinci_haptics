@@ -208,7 +208,7 @@ public:
 	~Haptic_controller();
 
 	void calculate_torque(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio);
-	void calculate_current_sp(vector<double> current, vector<double> torque_constant, vector<double> gear_ratio);
+	void calculate_current_sp(vector<double> position, vector<double> current, vector<double> torque_constant, vector<double> gear_ratio);
 	void print(vector<double> vec);
 
 	vector<double> T;
@@ -219,7 +219,7 @@ private:
 };
 Haptic_controller::Haptic_controller()
 {
-
+	I_sp.assign(4,0);
 }
 Haptic_controller::~Haptic_controller()
 {
@@ -234,14 +234,16 @@ void Haptic_controller::calculate_torque(vector<double> current, vector<double> 
 	}
 
 }
-void Haptic_controller::calculate_current_sp(vector<double> torque, vector<double> torque_constant, vector<double> gear_ratio)
+void Haptic_controller::calculate_current_sp(vector<double> position, vector<double> torque, vector<double> torque_constant, vector<double> gear_ratio)
 {
+
+	double Theta = (position[3]-position[2])/2;
 	I_sp.resize(4);
 
-	I_sp[0] = 0;//(torque[2]+torque[3])/torque_constant[0]/gear_ratio[0];	// pinch 	(Motor1)
- 	I_sp[1] = 0;//(torque[2]-torque[3])/torque_constant[1]/gear_ratio[1];	// yaw		(Motor2)
-	I_sp[2] = torque[5]/torque_constant[2]/gear_ratio[2];	// Roll		(Motor3)
-	I_sp[3] = 0;//torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
+	I_sp[0] = (torque[2]*cos(Theta)+torque[3]*cos(Theta))/torque_constant[0]/gear_ratio[0];	// pinch 	(Motor1)
+ 	I_sp[1] = 0;//(torque[2]*cos(Theta)-torque[3]*cos(Theta))/torque_constant[1]/gear_ratio[1];	// yaw		(Motor2)
+	I_sp[2] = -torque[5]/torque_constant[2]/gear_ratio[2];	// Roll		(Motor3)
+	I_sp[3] = 2*torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
 
 	
 }
@@ -260,10 +262,10 @@ int main(int argc, char **argv)
 	vector<double> gR (7);
 	gR.at(0)=0;
 	gR.at(1)=0;
-	gR.at(2)=10.0;
-	gR.at(3)=10.0;
-	gR.at(4)=11.0;
-	gR.at(5)=7.5;
+	gR.at(2)=10.0;		//jaw_left
+	gR.at(3)=10.0;		//jaw_right
+	gR.at(4)=11.0;		//pitch
+	gR.at(5)=7.5;		//roll
 	gR.at(6)=0;
 
 	System P4 (kT,gR);
@@ -294,33 +296,27 @@ int main(int argc, char **argv)
 
 	Haptic_controller C;
 
+
+
 	while (ros::ok())
 	{
 		if (joystick.ready)
 		{
 			joystick.check_limits();
+			roll_setpoint.data = joystick.roll;
+			pitch_setpoint.data = joystick.pitch;
+			jaw_left_setpoint.data = joystick.jaw_left;
+			jaw_right_setpoint.data = joystick.jaw_right;
 		}
 		
 
 		if (P4.ready)
 		{
 			C.calculate_torque(P4.current,P4.Kt,P4.Gr);
-			vector<double>Torque_robot =C.T;
-			C.calculate_current_sp(C.T,joystick.Kt,joystick.Gr);
-		}
+			C.calculate_current_sp(P4.position,C.T,joystick.Kt,joystick.Gr);
 
-		if(joystick.ready)
-		{
-			roll_setpoint.data = joystick.roll;
-			pitch_setpoint.data = joystick.pitch;
-			jaw_left_setpoint.data = joystick.jaw_left;
-			jaw_right_setpoint.data = joystick.jaw_right;
-		}
-
-		if(P4.ready)
-		{
-			joystick_sp.data[0] = 0;
-			joystick_sp.data[1] = 0;
+			joystick_sp.data[0] = C.I_sp[0];
+			joystick_sp.data[1] = C.I_sp[1];
 			joystick_sp.data[2] = C.I_sp[2];
 			joystick_sp.data[3] = C.I_sp[3];
 		}
