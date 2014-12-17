@@ -5,13 +5,11 @@
 #include <vector>
 #include <math.h>
 
-#define ROLL_LIMIT 2.5
-#define PITCH_LIMIT 1.2
-#define JAW_LIMIT 1.5
+#define PINCH_LIMIT 0.3
 
 #define Kt_p4 0.0439
 
-#define FREQ 200
+#define FREQ 100
 
 using namespace std;
 
@@ -140,63 +138,20 @@ void Joystick::JoystickCallback(sensor_msgs::JointState joint_states)
 	{
 		ready = false;
 	}
-
+	position[4] *=1.5;
 
 }
 void Joystick::check_limits(void)
 {
-	if (position[2] > ROLL_LIMIT)
+
+	if (position[0] > PINCH_LIMIT)
 	{
-		roll = ROLL_LIMIT;
+		//position[0] = PINCH_LIMIT;
 	}
-	else if (position[2] < -ROLL_LIMIT)
-	{
-		roll = -ROLL_LIMIT;
-	}
-	else
-	{
 		roll = position[2];
-	}
-
-	if (position[3] > PITCH_LIMIT)
-	{
-		pitch = PITCH_LIMIT;
-	}
-	else if (position[3] < -PITCH_LIMIT)
-	{
-		pitch = -PITCH_LIMIT;
-	}
-	else
-	{
 		pitch = position[3];
-	}
-
-	if (-position[0] + position[1] > JAW_LIMIT)
-	{
-		jaw_left = JAW_LIMIT;
-	}
-	else if (-position[0] + position[1]  < -JAW_LIMIT)
-	{
-		jaw_left = -JAW_LIMIT;
-	}
-	else
-	{
 		jaw_left = -position[0] + position[1] ;
-	}
-
-	if (-position[0] - position[1]> JAW_LIMIT)
-	{
-		jaw_right = JAW_LIMIT;
-	}
-	else if (-position[0] - position[1] < -JAW_LIMIT)
-	{
-		jaw_right = -JAW_LIMIT;
-	}
-	else
-	{
 		jaw_right = -position[0] - position[1];
-	}
-
 }
 
 
@@ -241,23 +196,32 @@ void Haptic_controller::calculate_current_sp(vector<double> position, vector<dou
 	double Theta = (position[2]+position[3])/2;
 	double sign0;
 
+
 	I_sp.resize(4);
 
-	if(torque[3] >= torque[2])
+	if(torque[3] < 0 && torque[2] > 0)	// Forces jaws pointing inside
 	{
-		sign0 = 1;
+		I_sp[0] = (torque[2]-torque[3])/torque_constant[0]/gear_ratio[0]/2;
+		I_sp[1] = (torque[2]+torque[3])/torque_constant[1]/gear_ratio[1]/2;
 	}
-	else
+	else if (torque[2] <0 && torque[3] >0 )	// Forces jaws pointing outside
 	{
-		sign0 = -1;
+		I_sp[0] = (-torque[2]+torque[3])/torque_constant[0]/gear_ratio[0]/2;
+		I_sp[1] = (torque[2]+torque[3])/torque_constant[1]/gear_ratio[1]/2;
+	}
+	else if (torque[2] >0 && torque[3] >0 )	// Forces jaws pointing to the left
+	{
+		I_sp[0] = (torque[3]-torque[2])/torque_constant[0]/gear_ratio[0]/2;
+		I_sp[1] = (torque[2]+torque[3])/torque_constant[1]/gear_ratio[1]/2;
+	}
+	else if (torque[2] <0 && torque[3] <0 )	// Forces jaws pointing to the right
+	{
+		I_sp[0] = (torque[3]-torque[2])/torque_constant[0]/gear_ratio[0]/2;
+		I_sp[1] = (torque[2]+torque[3])/torque_constant[1]/gear_ratio[1]/2;
 	}
 
-	I_sp[0] = sign0*(fabs(torque[2])+fabs(torque[3]))/torque_constant[0]/gear_ratio[0];	// pinch 	(Motor1)
- 	I_sp[1] = sign0*(fabs(torque[2])-fabs(torque[3]))/torque_constant[0]/gear_ratio[0];//(torque[2]*cos(Theta)-torque[3]*cos(Theta))/torque_constant[1]/gear_ratio[1];	// yaw		(Motor2)
-	I_sp[2] = -torque[5]/torque_constant[2]/gear_ratio[2];	// Roll		(Motor3)
-	I_sp[3] = torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
-
-	printf("%lf \t %lf \t %lf \n",Theta,cos(Theta),torque[2]+torque[3]);
+	I_sp[2] = 0;//-0.5*(torque[5]/torque_constant[2]/gear_ratio[2]);	// Roll		(Motor3)
+	I_sp[3] = 0*torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
 }
 void Haptic_controller::print(vector<double> vec)
 {
@@ -294,6 +258,7 @@ int main(int argc, char **argv)
 	ros::Publisher instr_yawl_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_left_controller/command",1);
 	ros::Publisher instr_yawr_pub = n.advertise<std_msgs::Float64>("/davinci/p4_instrument_jaw_right_controller/command",1);
 	ros::Publisher joystick_sp_pub = n.advertise<std_msgs::Float64MultiArray>("davinci_joystick/I_sp",1);
+	ros::Publisher haptic_pub = n.advertise<std_msgs::Float64MultiArray>("haptic/roll",1);
 
 	ros::Rate rate(FREQ);
 
@@ -305,6 +270,8 @@ int main(int argc, char **argv)
 	std_msgs::Float64MultiArray joystick_sp;
 	joystick_sp.data.resize(4);
 
+	std_msgs::Float64MultiArray haptic_roll_msg;
+	haptic_roll_msg.data.resize(4);
 
 	Haptic_controller C;
 
@@ -327,10 +294,18 @@ int main(int argc, char **argv)
 			C.calculate_torque(P4.current,P4.Kt,P4.Gr);
 			C.calculate_current_sp(P4.position,C.T,joystick.Kt,joystick.Gr);
 
-			joystick_sp.data[0] = C.I_sp[0];
-			joystick_sp.data[1] = C.I_sp[1];
+			joystick_sp.data[0] = -C.I_sp[0];
+			joystick_sp.data[1] = -C.I_sp[1];
 			joystick_sp.data[2] = C.I_sp[2];
 			joystick_sp.data[3] = C.I_sp[3];
+		}
+
+		if (joystick.ready && P4.ready)
+		{
+			haptic_roll_msg.data[0] = C.T[2];
+			haptic_roll_msg.data[1] = C.T[3];
+			haptic_roll_msg.data[2] = C.T[2]+C.T[3];
+			haptic_roll_msg.data[3] = fabs(C.T[2])+fabs(C.T[3]);
 		}
 
 		instr_yawl_pub.publish(jaw_left_setpoint);
@@ -338,6 +313,7 @@ int main(int argc, char **argv)
 		instr_roll_pub.publish(roll_setpoint);
 		instr_pitch_pub.publish(pitch_setpoint);
 		joystick_sp_pub.publish(joystick_sp);
+		haptic_pub.publish(haptic_roll_msg);
 
 		ros::spinOnce();
 		rate.sleep();
