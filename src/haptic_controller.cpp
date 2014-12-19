@@ -130,7 +130,7 @@ void Joystick::JoystickCallback(sensor_msgs::JointState joint_states)
 		position[i] = joint_states.position[i];
 		current[i] = joint_states.effort[i];
 	}
-	if (l == 4)
+	if (l > 1)
 	{
 		ready = true;
 	}
@@ -138,8 +138,7 @@ void Joystick::JoystickCallback(sensor_msgs::JointState joint_states)
 	{
 		ready = false;
 	}
-	position[4] *=1.5;
-
+	
 }
 void Joystick::check_limits(void)
 {
@@ -192,11 +191,6 @@ void Haptic_controller::calculate_torque(vector<double> current, vector<double> 
 }
 void Haptic_controller::calculate_current_sp(vector<double> position, vector<double> torque, vector<double> torque_constant, vector<double> gear_ratio)
 {
-
-	double Theta = (position[2]+position[3])/2;
-	double sign0;
-
-
 	I_sp.resize(4);
 
 	if(torque[3] < 0 && torque[2] > 0)	// Forces jaws pointing inside
@@ -220,8 +214,8 @@ void Haptic_controller::calculate_current_sp(vector<double> position, vector<dou
 		I_sp[1] = (torque[2]+torque[3])/torque_constant[1]/gear_ratio[1]/2;
 	}
 
-	I_sp[2] = 0;//-0.5*(torque[5]/torque_constant[2]/gear_ratio[2]);	// Roll		(Motor3)
-	I_sp[3] = 0*torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
+	I_sp[2] = (torque[5]/torque_constant[2]/gear_ratio[2]);	// Roll		(Motor3)
+	I_sp[3] = torque[4]/torque_constant[3]/gear_ratio[3];	// Pitch	(Motor4)
 }
 void Haptic_controller::print(vector<double> vec)
 {
@@ -285,7 +279,7 @@ int main(int argc, char **argv)
 			roll_setpoint.data = joystick.roll;
 			pitch_setpoint.data = joystick.pitch;
 			jaw_left_setpoint.data = joystick.jaw_left;
-			jaw_right_setpoint.data = joystick.jaw_right;
+			jaw_right_setpoint.data =joystick.jaw_right;
 		}
 		
 
@@ -294,10 +288,10 @@ int main(int argc, char **argv)
 			C.calculate_torque(P4.current,P4.Kt,P4.Gr);
 			C.calculate_current_sp(P4.position,C.T,joystick.Kt,joystick.Gr);
 
-			joystick_sp.data[0] = -C.I_sp[0];
-			joystick_sp.data[1] = -C.I_sp[1];
-			joystick_sp.data[2] = C.I_sp[2];
-			joystick_sp.data[3] = C.I_sp[3];
+			joystick_sp.data[0] = 0.117*C.I_sp[0]*4;
+			joystick_sp.data[1] = -0.47*C.I_sp[1]*4;
+			joystick_sp.data[2] = -0.145*C.I_sp[2];
+			joystick_sp.data[3] = 0.43*C.I_sp[3];
 		}
 
 		if (joystick.ready && P4.ready)
